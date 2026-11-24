@@ -18,36 +18,32 @@ class LinguaService : InputMethodService() {
  private var generation = 0
  private var sensitive = false
  private val buffer = StringBuilder()
- private val word = StringBuilder()
  private var root: LinearLayout? = null
  private var status: TextView? = null
- private var suggestions: LinearLayout? = null
  private val handler = Handler(Looper.getMainLooper())
  private val translators = mutableMapOf<Boolean, Translator>()
- private val ru = "привет как дела хорошо спасибо пожалуйста сегодня завтра вчера сейчас потом можно нужно хочу буду будет есть нет да тут здесь там это этот эта очень просто почему потому когда где куда откуда который которая которые человек люди время работа домой дома телефон сообщение клавиатура перевод русский английский здравствуйте добрый доброе утро вечер ночь пока конечно понятно отлично нормально немного много больше меньше делать сделать работает работаю напиши написать сказать говорю говорить думаю думаю́ знаю знаю́ ничего что чтобы если или уже ещё еще тоже только всегда никогда вместе друг друзья родной родная давай поехали дальше получилось получается исправить ошибка ошибок текст слово слова предложение предложения приложение приложения установить обновить проверить проверка интернет спасибо большое тебя тебе меня мне мы вы они он она оно мой моя мои твой твоя наш ваше новый новая новое первый первая второй вторая раз два три четыре пять шесть семь восемь девять десять".split(" ")
- private val en = "hello hi how are you i am is it we they he she the a an and or but if then this that these those there here where when what why who which can could would should will have has had do does did not no yes thanks thank please good great excellent fine today tomorrow yesterday now later time work working home phone keyboard translation translate english russian message text word sentence app application install update check internet friend friends want need like love know think understand right wrong first second new old more less much many some any all one two three four five six seven eight nine ten".split(" ")
  private fun dp(n:Int) = (n*resources.displayMetrics.density).toInt()
  private fun bg(color:Int) = GradientDrawable().apply { setColor(color); cornerRadius=dp(5).toFloat() }
  private fun active() = enabled && !sensitive
  private fun stopRepeat() { handler.removeCallbacksAndMessages(null) }
  override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
  super.onStartInput(attribute,restarting)
- stopRepeat(); generation++; pending=false; buffer.clear(); word.clear()
+ stopRepeat(); generation++; pending=false; buffer.clear()
  val type=attribute?.inputType ?: 0
  val variation=type and InputType.TYPE_MASK_VARIATION
  sensitive=(type and InputType.TYPE_MASK_CLASS)!=InputType.TYPE_CLASS_TEXT || variation in listOf(InputType.TYPE_TEXT_VARIATION_PASSWORD,InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,InputType.TYPE_TEXT_VARIATION_URI) || (type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)!=0
  shift=!sensitive && (currentInputConnection?.getTextBeforeCursor(100,0)?.toString()?.trimEnd()?.lastOrNull()?.let { it in ".?!" } ?: true)
  render()
  }
- override fun onFinishInput(){ stopRepeat(); generation++; pending=false; buffer.clear(); word.clear(); super.onFinishInput() }
+ override fun onFinishInput(){ stopRepeat(); generation++; pending=false; buffer.clear(); super.onFinishInput() }
  override fun onCreateInputView():View {
  root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff151515.toInt()); setPadding(dp(2),dp(2),dp(2),dp(48)) }
  render(); return root!!
  }
  private fun key(label:String,weight:Float=1f,height:Int=44,blue:Boolean=false,alt:String?=null,action:()->Unit):TextView {
  return TextView(this).apply {
- text=if(alt==null) label else "$alt\n$label"
- textSize=if(alt==null) 18f else 16f
+ text=if(alt==null) label else android.text.SpannableString("$alt\n$label").apply { setSpan(android.text.style.RelativeSizeSpan(0.65f),0,alt.length,0); setSpan(android.text.style.ForegroundColorSpan(0xffaaaaaa.toInt()),0,alt.length,0) }
+ textSize=18f; includeFontPadding=false; maxLines=2
  setTextColor(Color.WHITE); gravity=Gravity.CENTER
  background=bg(if(blue) 0xff3d5de8.toInt() else 0xff292929.toInt())
  layoutParams=LinearLayout.LayoutParams(0,dp(height),weight).apply { setMargins(dp(2),dp(2),dp(2),dp(2)) }
@@ -63,10 +59,9 @@ class LinguaService : InputMethodService() {
  val controls=LinearLayout(this)
  controls.addView(key("RU/EN",height=30){finishRaw(); russian=!russian; render()})
  controls.addView(key("Режим",height=30){finishRaw(); enabled=!enabled; render()})
- controls.addView(key("Перевести",1.5f,30){if(active() && buffer.isNotBlank()) {correctWord(); translate()}})
+ controls.addView(key("Перевести",1.5f,30){if(active() && buffer.isNotBlank()) {translate()}})
  panel.addView(controls)
- suggestions=LinearLayout(this); panel.addView(suggestions); refreshSuggestions()
- fun row(block:LinearLayout.()->Unit){panel.addView(LinearLayout(this).apply(block))}
+ fun row(block:LinearLayout.()->Unit){panel.addView(LinearLayout(this).apply { baselineAligned=false; gravity=Gravity.CENTER_VERTICAL; block() })}
  row { "1234567890".forEach { ch -> addView(key(ch.toString(),height=35){type(ch.toString())}) } }
  val rows=if(symbols) listOf("@#%&*()-+","/:;,.?!","[]{}<>=") else if(russian) listOf("йцукенгшщзх","фывапролджэ","ячсмитьбю") else listOf("qwertyuiop","asdfghjkl","zxcvbnm")
  val alts=listOf("%^~|[]<>{}№","@#&*-+=()×÷","—₽\"':;ъ$€")
@@ -79,13 +74,20 @@ class LinguaService : InputMethodService() {
  }
  if(index==2) {
  val del=key("⌫"){delete()}
- del.setOnTouchListener { _,event ->
+ var held=false
+ val repeat=object:Runnable { override fun run(){ if(held && del.isPressed && del.isAttachedToWindow && !pending){delete();handler.postDelayed(this,80)} } }
+ del.setOnTouchListener { v,event ->
  when(event.actionMasked){
- MotionEvent.ACTION_DOWN -> { if(!pending){delete(); handler.postDelayed(object:Runnable{override fun run(){if(!pending){delete(); handler.postDelayed(this,65)}}},400)}; true }
- MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL -> {stopRepeat(); true}
+ MotionEvent.ACTION_DOWN -> {stopRepeat(); held=true; v.isPressed=true; if(!pending){delete();handler.postDelayed(repeat,450)}; true}
+ MotionEvent.ACTION_MOVE -> {if(event.x<0 || event.y<0 || event.x>=v.width || event.y>=v.height){held=false;v.isPressed=false;handler.removeCallbacks(repeat)};true}
+ MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL -> {held=false;v.isPressed=false;handler.removeCallbacks(repeat);true}
  else -> true
  }
  }
+ del.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener{
+ override fun onViewAttachedToWindow(v:View){}
+ override fun onViewDetachedFromWindow(v:View){held=false;handler.removeCallbacks(repeat)}
+ })
  addView(del)
  }
  } }
@@ -95,59 +97,29 @@ class LinguaService : InputMethodService() {
  addView(key(",",0.8f){type(",")})
  addView(key(if(russian) "Русский" else "English",4.5f){type(" ")})
  addView(key(".",alt="?"){type(".")})
- addView(key("↵",1.4f,blue=true){if(active() && buffer.isNotBlank()){correctWord(); translate()}else{finishRaw();currentInputConnection?.commitText("\n",1);shift=true;render()}})
+ addView(key("↵",1.4f,blue=true){if(active() && buffer.isNotBlank()){translate()}else{finishRaw();currentInputConnection?.commitText("\n",1);shift=true;render()}})
  }
  }
- private fun candidates():List<String>{
- val s=word.toString().lowercase()
- if(sensitive || s.isBlank()) return emptyList()
- val dict=if(russian) ru else en
- return (listOf(s)+dict.filter{it.startsWith(s)&&it!=s}+dict.filter{it!=s && it.length>=3 && s.length>=3 && distance(s,it)==1}).distinct().take(3)
- }
- private fun distance(a:String,b:String):Int {
- if(kotlin.math.abs(a.length-b.length)>1)return 2
- var prev=IntArray(b.length+1){it}
- for(i in a.indices){val next=IntArray(b.length+1);next[0]=i+1;for(j in b.indices)next[j+1]=minOf(next[j]+1,prev[j+1]+1,prev[j]+if(a[i]==b[j])0 else 1);prev=next}
- return prev[b.length]
- }
- private fun refreshSuggestions(){
- val line=suggestions ?: return; line.removeAllViews()
- val options=candidates()
- repeat(3){i->val s=options.getOrNull(i) ?: "";line.addView(key(s,height=32){if(s.isNotEmpty()){replaceWord(s);type(" ")}})}
- }
- private fun replaceWord(s:String){
- if(word.isEmpty())return
- val value=if(word.first().isUpperCase())s.replaceFirstChar{it.uppercase()}else s
- val ic=currentInputConnection ?: return
- if(active()){buffer.delete(buffer.length-word.length,buffer.length);buffer.append(value);ic.setComposingText(buffer.toString(),1)}
- else {ic.deleteSurroundingText(word.length,0);ic.commitText(value,1)}
- word.clear();word.append(value)
- }
- private fun correctWord(){
- if(sensitive || word.length<4)return
- val s=word.toString().lowercase();val dict=if(russian)ru else en
- if(s in dict)return
- val matches=dict.filter{distance(s,it)==1}
- if(matches.size==1)replaceWord(matches[0])
- }
- private fun finishRaw(){currentInputConnection?.finishComposingText();buffer.clear();word.clear()}
+ private fun finishRaw(){currentInputConnection?.finishComposingText();buffer.clear()}
  private fun delete(){
  val ic=currentInputConnection ?: return
- if(active() && buffer.isNotEmpty()){buffer.deleteCharAt(buffer.length-1);ic.setComposingText(buffer.toString(),1);word.clear();word.append(buffer.takeLastWhile{it.isLetter()})}
- else {ic.deleteSurroundingText(1,0);if(word.isNotEmpty())word.deleteCharAt(word.length-1)}
- refreshSuggestions()
+ if(active() && buffer.isNotEmpty()){buffer.deleteCharAt(buffer.length-1);ic.setComposingText(buffer.toString(),1)}
+ else if(!ic.commitTextIfSelection()) ic.deleteSurroundingText(1,0)
+ }
+ private fun android.view.inputmethod.InputConnection.commitTextIfSelection():Boolean {
+ if(getSelectedText(0).isNullOrEmpty())return false
+ return commitText("",1)
  }
  private fun type(value:String){
  val ic=currentInputConnection ?: return
  val letter=value.all{it.isLetter()}
  val actual=if(letter && shift && !sensitive)value.replaceFirstChar{it.uppercase()}else value
- if(!letter){correctWord();word.clear()}else if(!sensitive)word.append(actual)
  if(active()){buffer.append(actual);ic.setComposingText(buffer.toString(),1)}else ic.commitText(actual,1)
  val old=shift
  if(letter)shift=false
  if(actual in listOf(".","?","!"))shift=!sensitive
  if(active() && actual in listOf(".","?","!") && buffer.length>1){translate();return}
- if(old!=shift)render()else refreshSuggestions()
+ if(old!=shift)render()
  }
  private fun translate(){
  val source=buffer.toString();val token=generation;val direction=russian
@@ -157,7 +129,7 @@ class LinguaService : InputMethodService() {
  if(token!=generation)return@addOnCompleteListener
  pending=false
  if(task.isSuccessful)currentInputConnection?.commitText(task.result,1)else currentInputConnection?.finishComposingText()
- buffer.clear();word.clear();render()
+ buffer.clear();render()
  if(!task.isSuccessful)status?.text="Модель недоступна. Исходный текст сохранён."
  }
  }
