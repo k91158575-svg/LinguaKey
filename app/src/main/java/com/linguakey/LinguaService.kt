@@ -28,7 +28,7 @@ class LinguaService : InputMethodService() {
  }
  override fun onFinishInput() { generation++; pending = false; buffer.clear(); super.onFinishInput() }
  override fun onCreateInputView(): View {
- root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xff202124.toInt()); setPadding(4,4,4,4) }
+ root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xff202124.toInt()); setPadding(4,4,4,(48 * resources.displayMetrics.density).toInt()) }
  render()
  return root!!
  }
@@ -42,10 +42,11 @@ class LinguaService : InputMethodService() {
  keys.forEach { key -> line.addView(Button(this).apply { text = key; textSize = 14f; isAllCaps = false; minWidth = 0; minimumWidth = 0; setPadding(0,0,0,0); setOnClickListener { if (!pending) action(key) } }, LinearLayout.LayoutParams(0, (48 * resources.displayMetrics.density).toInt(),1f)) }
  panel.addView(line)
  }
- row(listOf("RU/EN","Перевод","⇧","123","⌫")) { key ->
+ row(listOf("RU/EN","Режим","Перевести","⇧","123","⌫")) { key ->
  when(key) {
  "RU/EN" -> { finishRaw(); russian = !russian }
- "Перевод" -> { finishRaw(); enabled = !enabled }
+ "Режим" -> { finishRaw(); enabled = !enabled }
+ "Перевести" -> { if (enabled && !sensitive && buffer.isNotBlank()) translate() }
  "⇧" -> shift = !shift
  "123" -> symbols = !symbols
  "⌫" -> { if(buffer.isNotEmpty()) { buffer.deleteCharAt(buffer.length-1); currentInputConnection?.setComposingText(buffer.toString(),1) } else currentInputConnection?.deleteSurroundingText(1,0) }
@@ -53,7 +54,7 @@ class LinguaService : InputMethodService() {
  }
  val rows = if(symbols) listOf("1234567890","@#%&*()-+","/:;,.?!") else if(russian) listOf("йцукенгшщзх","фывапролджэ","ячсмитьбюъё") else listOf("qwertyuiop","asdfghjkl","zxcvbnm")
  rows.forEach { chars -> row(chars.map { if(shift) it.uppercase() else it.toString() }) { type(it); if(shift) { shift=false; render() } } }
- row(listOf(",", "Пробел", ".", "?", "!", "↵")) { key -> if(key=="↵") { finishRaw(); currentInputConnection?.commitText("\n",1) } else type(if(key=="Пробел") " " else key) }
+ row(listOf(",", "Пробел", ".", "?", "!", "↵")) { key -> if(key=="↵") { if(enabled && !sensitive && buffer.isNotBlank()) translate() else { finishRaw(); currentInputConnection?.commitText("\n",1) } } else type(if(key=="Пробел") " " else key) }
  }
  private fun finishRaw() { currentInputConnection?.finishComposingText(); buffer.clear() }
  private fun type(value: String) {
