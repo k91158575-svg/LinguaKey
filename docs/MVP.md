@@ -1,0 +1,2 @@
+# LinguaKey 0.1
+Prototype: enable keyboard from Android settings. Toggle RU/EN and translation. Translation triggers on sentence punctuation. Initial model download requires internet. Password and non-text fields disable translation. Input is temporarily locked during translation. Cursor movement, editor compatibility, model download and physical device behavior require testing. No production readiness claimed.
