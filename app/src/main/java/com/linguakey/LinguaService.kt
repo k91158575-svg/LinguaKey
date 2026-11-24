@@ -61,7 +61,7 @@ class LinguaService : InputMethodService() {
  controls.addView(key("Режим",height=30){finishRaw(); enabled=!enabled; render()})
  controls.addView(key("Перевести",1.5f,30){if(active() && buffer.isNotBlank()) {translate()}})
  panel.addView(controls)
- fun row(block:LinearLayout.()->Unit){panel.addView(LinearLayout(this).apply { baselineAligned=false; gravity=Gravity.CENTER_VERTICAL; block() })}
+ fun row(block:LinearLayout.()->Unit){panel.addView(LinearLayout(this).apply { setBaselineAligned(false); gravity=Gravity.CENTER_VERTICAL; block() })}
  row { "1234567890".forEach { ch -> addView(key(ch.toString(),height=35){type(ch.toString())}) } }
  val rows=if(symbols) listOf("@#%&*()-+","/:;,.?!","[]{}<>=") else if(russian) listOf("йцукенгшщзх","фывапролджэ","ячсмитьбю") else listOf("qwertyuiop","asdfghjkl","zxcvbnm")
  val alts=listOf("%^~|[]<>{}№","@#&*-+=()×÷","—₽\"':;ъ$€")
